@@ -22,13 +22,15 @@ const litNodeClient = new LitNodeClient({
     debug: true,
 });
 
-let newlyMintedPKP = {
-    tokenId:
-        "0xacbd946e256e93c78f2e9197d1bfa47ed0ef60c534aa3e069af2b49d2d29ceaf",
-    publicKey:
-        "0435396f7ff45bf81f11a7c16dfc11b771fea6727fd75199c34e0bb8f4c8c0179acee0d878929e4438ea30a1d7a316642bf883938711edec04b094f1b7e52e7089",
-    ethAddress: "0x429104BC6f0848BCa64710B3C5FA21aCFE37B2a5",
-};
+let newlyMintedPKP = {}
+
+// let newlyMintedPKP = {
+//     tokenId:
+//         "0xacbd946e256e93c78f2e9197d1bfa47ed0ef60c534aa3e069af2b49d2d29ceaf",
+//     publicKey:
+//         "0435396f7ff45bf81f11a7c16dfc11b771fea6727fd75199c34e0bb8f4c8c0179acee0d878929e4438ea30a1d7a316642bf883938711edec04b094f1b7e52e7089",
+//     ethAddress: "0x429104BC6f0848BCa64710B3C5FA21aCFE37B2a5",
+// };
 
 // major functions --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
