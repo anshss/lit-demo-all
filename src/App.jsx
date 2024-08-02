@@ -2,6 +2,7 @@ import "./App.css";
 import { useState } from "react";
 import {
     mintPKPUsingEthWallet,
+    addPermittedAction,
     transferPKPToItself,
     fundPKP,
     addAnotherAuthToPKP,
@@ -9,7 +10,8 @@ import {
     seeAuthMethods,
     pkpSignTx,
     executeLitAction,
-} from "./utils";
+    executeLitActionOnNode
+} from "./lit/utils";
 
 function App() {
     const [ethAddress, setEthAddress] = useState("");
@@ -27,16 +29,18 @@ function App() {
 
             <button onClick={mintPKPCall}>Mint PKP With First Auth</button>
 
+            <button onClick={addPermittedAction}>Add Auth A</button>
+
             <button onClick={transferPKPToItself}>
                 Transfer PKP To Itself
             </button>
 
             <button onClick={fundPKP}>Fund PKP</button>
 
-            <button onClick={addAnotherAuthToPKP}>Add Another Auth</button>
+            <button onClick={addAnotherAuthToPKP}>Add Auth B</button>
 
             <button onClick={RemoveInitialAuthMethod}>
-                Remove Initial Auth
+                Remove Auth A
             </button>
 
             <button onClick={seeAuthMethods}>See Permitted Method</button>
@@ -44,6 +48,8 @@ function App() {
             <button onClick={pkpSignTx}>PKP Sign</button>
 
             <button onClick={executeLitAction}>Execute LitAction</button>
+
+            <button onClick={executeLitActionOnNode}>LitAction (Run On Node)</button>
         </div>
     );
 }

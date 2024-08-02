@@ -1,6 +1,6 @@
 import { LitNodeClient } from "@lit-protocol/lit-node-client";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
-import { ethers, Wallet } from "ethers";
+import { ethers } from "ethers";
 import { AuthMethodScope, LitNetwork } from "@lit-protocol/constants";
 import {
     LitActionResource,
@@ -14,87 +14,107 @@ import { litActionA, litActionB } from "./actions";
 import bs58 from "bs58";
 import { PKPEthersWallet } from "@lit-protocol/pkp-ethers";
 
-const privateKey = process.env.REACT_APP_PRIVATE_KEY;
+const privateKey1 = process.env.REACT_APP_PRIVATE_KEY_1;
+const privateKey2 = process.env.REACT_APP_PRIVATE_KEY_2;
 
 const litNodeClient = new LitNodeClient({
-    alertWhenUnauthorized: false,
     litNetwork: LitNetwork.DatilDev,
     debug: true,
 });
 
-let newlyMintedPKP = {}
+let newlyMintedPKP = {
+    "tokenId": "0x98518d192cefefd006b197b7a2485b065db159c0d8893c6640ff09ed7efaf2c9",
+    "publicKey": "0493701734ca500fa70b2abdec1aaa3c1260f2fd52ce7c7d001fd3ca50882f1097dac38387d3b0dd06479f472893874511df5eb832efb1eeffdc68ebd234ce2f64",
+    "ethAddress": "0x9B3444312F8bfDeF95Ece9F0939da337e68dc223"
+}
 
-// let newlyMintedPKP = {
-//     tokenId:
-//         "0xacbd946e256e93c78f2e9197d1bfa47ed0ef60c534aa3e069af2b49d2d29ceaf",
-//     publicKey:
-//         "0435396f7ff45bf81f11a7c16dfc11b771fea6727fd75199c34e0bb8f4c8c0179acee0d878929e4438ea30a1d7a316642bf883938711edec04b094f1b7e52e7089",
-//     ethAddress: "0x429104BC6f0848BCa64710B3C5FA21aCFE37B2a5",
-// };
+// wallet getters --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+async function getWalletA() {
+    // const provider = new ethers.providers.Web3Provider(window.ethereum);
+    // const wallet = provider.getSigner();
+
+    const provider = new ethers.providers.JsonRpcProvider(
+        `https://yellowstone-rpc.litprotocol.com/`
+    );
+    const wallet = new ethers.Wallet(privateKey1, provider);
+    return wallet;
+}
+
+async function getWalletB() {
+    const provider = new ethers.providers.JsonRpcProvider(
+        `https://yellowstone-rpc.litprotocol.com/`
+    );
+    const wallet = new ethers.Wallet(privateKey2, provider);
+    return wallet;
+}
 
 // major functions --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 // current user mints a new pkp
 export async function mintPKPUsingEthWallet() {
     console.log("minting started..");
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
-    const ethersSigner = provider.getSigner();
+    const signerA = await getWalletA();
 
     const litContracts = new LitContracts({
-        signer: ethersSigner,
+        signer: signerA,
         network: LitNetwork.DatilDev,
         debug: false,
     });
-
     await litContracts.connect();
 
     const mintedPkp = await litContracts.pkpNftContractUtils.write.mint();
-
     console.log("Minted PKP to your wallet: ", mintedPkp.pkp);
 
     newlyMintedPKP = mintedPkp.pkp;
+    return mintedPkp.pkp;
+}
+
+export async function addPermittedAction() {
+    console.log("adding permitted action..");
+    const signerA = await getWalletA();
 
     const ipfsCID_A = await uploadLitActionToIPFS(litActionA);
-    console.log(ipfsCID_A);
-    // const ipfsCID_A = "QmUi7n7Q1h3yVijGjc1paj1TjmDr2UVxzAqyX3irBqGbEj"
+    const bytesCID_A = await stringToBytes(ipfsCID_A);
 
-    const addAuthMethodAReceipt = await litContracts.addPermittedAction({
-        pkpTokenId: mintedPkp.pkp.tokenId,
+    const litContracts = new LitContracts({
+        signer: signerA,
+        network: LitNetwork.DatilDev,
+        debug: false,
+    });
+    await litContracts.connect();
+
+    await litContracts.addPermittedAction({
+        pkpTokenId: newlyMintedPKP.tokenId,
         ipfsId: ipfsCID_A,
         authMethodScopes: [AuthMethodScope.SignAnything],
     });
 
-    const bytesCID_A = await stringToBytes(ipfsCID_A);
-
     let isPermittedA =
         await litContracts.pkpPermissionsContract.read.isPermittedAction(
-            mintedPkp.tokenId,
+            newlyMintedPKP.tokenId,
             bytesCID_A
         );
 
     console.log("Auth method A added: ", isPermittedA);
-
-    return mintedPkp.pkp;
 }
 
 // pkp is now owner of itself
 export async function transferPKPToItself() {
     console.log("transfer started..");
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
-    const ethersSignerA = provider.getSigner();
-    const address = await provider.send("eth_requestAccounts", []);
+    const signerA = await getWalletA();
+    const address = signerA.address;
 
     const litContracts = new LitContracts({
-        signer: ethersSignerA,
+        signer: signerA,
         network: LitNetwork.DatilDev,
         debug: false,
     });
-
     await litContracts.connect();
 
     const transferPkpOwnershipReceipt =
         await litContracts.pkpNftContract.write.transferFrom(
-            address[0],
+            address,
             newlyMintedPKP.ethAddress,
             newlyMintedPKP.tokenId,
             {
@@ -113,42 +133,39 @@ export async function transferPKPToItself() {
 // funded pkp for sending transaction
 export async function fundPKP() {
     console.log("funding started..");
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
-    const ethersSigner = provider.getSigner();
+    const signerA = await getWalletA();
 
-    const fundPkpTxReceipt = await ethersSigner.sendTransaction({
+    const fundPkpTxReceipt = await signerA.sendTransaction({
         to: newlyMintedPKP.ethAddress,
         value: ethers.utils.parseEther("0.00003"),
     });
-
     await fundPkpTxReceipt.wait();
 
-    const balance = await ethersSigner.provider.getBalance(
+    const balance = await signerA.provider.getBalance(
         newlyMintedPKP.ethAddress,
         "latest"
     );
     console.log(`Got balance: ${ethers.utils.formatEther(balance)} ether`);
 }
 
-// takes current user sign with litActionA for a session to create PKPEthersWallet
 // addPermittedAction is called with litActionB by PKPEthersWallet
 export async function addAnotherAuthToPKP() {
     console.log("auth add started..");
 
-    const pkpSessionSigsA = await sigA();
+    const authASessionSig = await sigA();
 
-    const pkpEthersWalletA = new PKPEthersWallet({
+    const pkpAuthA = new PKPEthersWallet({
         litNodeClient,
         pkpPubKey: newlyMintedPKP.publicKey,
-        controllerSessionSigs: pkpSessionSigsA,
+        controllerSessionSigs: authASessionSig,
     });
 
-    await pkpEthersWalletA.init();
+    await pkpAuthA.init();
 
-    console.log(pkpEthersWalletA);
+    console.log(pkpAuthA);
 
     const litContractsPkpSignerA = new LitContracts({
-        signer: pkpEthersWalletA,
+        signer: pkpAuthA,
         network: LitNetwork.DatilDev,
         debug: false,
     });
@@ -166,11 +183,10 @@ export async function addAnotherAuthToPKP() {
             bytesCID_B,
             [AuthMethodScope.SignAnything],
             {
-                gasPrice: await pkpEthersWalletA.provider.getGasPrice(),
+                gasPrice: await pkpAuthA.provider.getGasPrice(),
                 gasLimit: 550_000,
             }
         );
-
     await addAuthMethodBReceipt.wait();
 
     const isPermittedB =
@@ -182,25 +198,24 @@ export async function addAnotherAuthToPKP() {
     console.log("Auth method B added: ", isPermittedB);
 }
 
-// takes second wallet and litActionB for a session sign to create PKPEthersWallet
 // removePermittedAction is called with litActionA by PKPEthersWallet
 export async function RemoveInitialAuthMethod() {
     console.log("auth remove started..");
 
-    const pkpSessionSigsB = await sigB();
+    const authBSessionSig = await sigB();
 
-    const pkpEthersWalletB = new PKPEthersWallet({
+    const pkpAuthB = new PKPEthersWallet({
         litNodeClient,
         pkpPubKey: newlyMintedPKP.publicKey,
-        controllerSessionSigs: pkpSessionSigsB,
+        controllerSessionSigs: authBSessionSig,
     });
 
-    await pkpEthersWalletB.init();
+    await pkpAuthB.init();
 
-    console.log(pkpEthersWalletB);
+    console.log(pkpAuthB);
 
     const litContractsPkpSignerB = new LitContracts({
-        signer: pkpEthersWalletB,
+        signer: pkpAuthB,
         network: LitNetwork.DatilDev,
         debug: false,
     });
@@ -217,11 +232,10 @@ export async function RemoveInitialAuthMethod() {
             newlyMintedPKP.tokenId,
             bytesCID_A,
             {
-                gasPrice: await pkpEthersWalletB.provider.getGasPrice(),
+                gasPrice: await pkpAuthB.provider.getGasPrice(),
                 gasLimit: 100_000,
             }
         );
-
     await removeAuthMethodAReceipt.wait();
 
     let isPermittedA =
@@ -237,17 +251,14 @@ export async function pkpSignTx() {
     console.log("pkp sign started..");
 
     // This can sign with authorized method
-    const pkpSessionSig = await sigA();
+    const pkpAuthSessionSig = await sigA();
 
     const pkpEthersWallet = new PKPEthersWallet({
         litNodeClient,
         pkpPubKey: newlyMintedPKP.publicKey,
-        controllerSessionSigs: pkpSessionSig,
+        controllerSessionSigs: pkpAuthSessionSig,
     });
-
     await pkpEthersWallet.init();
-
-    console.log(pkpEthersWallet);
 
     const transactionObject = {
         to: "0x48e6a467852Fa29710AaaCDB275F85db4Fa420eB",
@@ -255,104 +266,161 @@ export async function pkpSignTx() {
         gasPrice: await pkpEthersWallet.provider.getGasPrice(),
         gasLimit: ethers.BigNumber.from("2100000"),
         data: "0x",
-        // nonce: ethers.BigNumber.from("1"),
     };
 
+    // const tx = await pkpEthersWallet.signTransaction(transactionObject)
     const tx = await pkpEthersWallet.sendTransaction(transactionObject);
-
     const receipt = await tx.wait();
 
-    console.log(receipt);
+    console.log("transaction: ", receipt);
 }
 
 export async function executeLitAction() {
-    console.log("started..");
+    console.log("executing lit action..");
 
     const sessionSigs = await sigA();
 
-    const lASignTx = `(async () => {
+    const chainProvider = new ethers.providers.JsonRpcProvider(
+        `https://yellowstone-rpc.litprotocol.com/`
+    );
+
+    const ActionSignMessage = `(async () => {
         let toSign = new TextEncoder().encode('Hello World');
         toSign = ethers.utils.arrayify(ethers.utils.keccak256(toSign));
 
-        const signature = await Lit.Actions.signAndCombineEcdsa({
+        const signature = await Lit.Actions.signEcdsa({
           toSign,
           publicKey,
-          sigName,
+          sigName: "signature",
         });
-
-        console.log('hello 1')
 
         Lit.Actions.setResponse({ response: JSON.stringify(signature) });
       })();
     `;
 
-    // let txn = {
-    //     to: "0x48e6a467852Fa29710AaaCDB275F85db4Fa420eB",
-    //     value: ethers.BigNumber.from("10"),
-    //     gasLimit: ethers.BigNumber.from("2100000"),
-    //     data: "0x",
-    //     // nonce: ethers.BigNumber.from("6")
-    //     };
-
-    // ethers.BigNumber.from("0")
-
-    
-    const lASendTx = `(async () => {
-        let transactionObject = {
-            to: "0x48e6a467852Fa29710AaaCDB275F85db4Fa420eB",
-            value: ethers.BigNumber.from("10"),
-            gasLimit: ethers.BigNumber.from("20000000000"),
-            data: "0x",
-            nonce: 1
-            };
-            
+    const ActionSignTx = `
+    (async () => {
         const serializedTx = ethers.utils.serializeTransaction(transactionObject);
-        let hash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(serializedTx));
-        let toSign = await new TextEncoder().encode(hash);
-        toSign = ethers.utils.arrayify(ethers.utils.keccak256(toSign));
-
-        const signature = await Lit.Actions.signAndCombineEcdsa({
-            toSign,
-            publicKey,
-            sigName,
-            });
-            
-            let res = await Lit.Actions.runOnce(
-                { waitForResponse: true, name: "txnSender" },
-                async () => {
-                // const rpcUrl = await Lit.Actions.getRpcUrl({ chain: "ethereum" });
-                const provider = new ethers.providers.JsonRpcProvider("https://yellowstone-rpc.litprotocol.com");
-                const tx = await provider.sendTransaction(signature);
-                return tx.blockHash;
-            }
-        );
-      
-        Lit.Actions.setResponse({ response: res });
-      })();
+        const toSign = ethers.utils.arrayify(ethers.utils.keccak256(ethers.utils.arrayify(serializedTx)));
+        
+        const signature = await Lit.Actions.signEcdsa({
+            toSign: toSign,
+            publicKey: publicKey,
+            sigName: "chainSignature",
+        });
+        Lit.Actions.setResponse({ response: "signed" })
+    })();
     `;
+
+    const unsignedTransaction = {
+        to: "0x48e6a467852Fa29710AaaCDB275F85db4Fa420eB",
+        value: 1,
+        gasLimit: 50_000,
+        gasPrice: (await chainProvider.getGasPrice()).toHexString(),
+        nonce: await chainProvider.getTransactionCount(
+            newlyMintedPKP.ethAddress
+        ),
+        chainId: 175188,
+    };
+    console.log("txObject", unsignedTransaction);
 
     await litNodeClient.connect();
 
     const results = await litNodeClient.executeJs({
-        code: lASendTx,
+        code: ActionSignTx,
         sessionSigs: sessionSigs,
         jsParams: {
             publicKey: newlyMintedPKP.publicKey,
-            sigName: "sig",
+            transactionObject: unsignedTransaction,
         },
     });
+    console.log("results from node: ", results);
 
-    console.log("logs: ", results.logs);
+    const sign = formatSignature(results.signatures.chainSignature);
 
+    const signedTx = await chainProvider.sendTransaction(
+        ethers.utils.serializeTransaction(unsignedTransaction, sign)
+    );
+    console.log("signedTx: ", signedTx)
+
+}
+
+
+export async function executeLitActionOnNode() {
+    console.log("executing lit action (transfer on node) ..");
+
+    const sessionSigs = await sigA();
+
+    const ActionSendTxOnNode = `
+       (async () => {
+        const serializedTx = ethers.utils.serializeTransaction(transactionObject);
+        const toSign = ethers.utils.arrayify(ethers.utils.keccak256(ethers.utils.arrayify(serializedTx)));
+
+        const signature = await Lit.Actions.signAndCombineEcdsa({
+            toSign: toSign,
+            publicKey: publicKey,
+            sigName: "chainSignature",
+        });
+
+        const jsonSignature = JSON.parse(signature);
+        jsonSignature.r = "0x" + jsonSignature.r.substring(2);
+        jsonSignature.s = "0x" + jsonSignature.s;
+        const hexSignature = ethers.utils.joinSignature(jsonSignature);
+
+        const signedTx = ethers.utils.serializeTransaction(
+            transactionObject,
+            hexSignature
+        );
+
+        let res = await Lit.Actions.runOnce(
+            { waitForResponse: true, name: "txnSender" },
+            async () => {
+                const rpcUrl = await Lit.Actions.getRpcUrl({ chain: "baseSepolia" });
+                const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+                // const provider = new ethers.providers.JsonRpcProvider("https://yellowstone-rpc.litprotocol.com");
+                const tx = await provider.sendTransaction(signedTx);
+                return tx.blockHash;
+            }
+        );
+        Lit.Actions.setResponse({ res });
+      })();
+      `;
+
+    const chainProvider = new ethers.providers.JsonRpcProvider(
+        `https://yellowstone-rpc.litprotocol.com/`
+    );
+
+    const unsignedTransaction = {
+        to: "0x48e6a467852Fa29710AaaCDB275F85db4Fa420eB",
+        value: 1,
+        gasLimit: 50_000,
+        gasPrice: (await chainProvider.getGasPrice()).toHexString(),
+        nonce: await chainProvider.getTransactionCount(
+            newlyMintedPKP.ethAddress
+        ),
+        chainId: 175188,
+    };
+    console.log("txObject", unsignedTransaction);
+
+    await litNodeClient.connect();
+
+    const results = await litNodeClient.executeJs({
+        code: ActionSendTxOnNode,
+        sessionSigs: sessionSigs,
+        jsParams: {
+            publicKey: newlyMintedPKP.publicKey,
+            transactionObject: unsignedTransaction,
+        },
+    });
     console.log("results: ", results);
 }
 
-// Auth Methods --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+// Auth Session Signatures --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 // takes current user's wallet with litActionA for a session
 export async function sigA() {
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
-    const ethersSignerA = provider.getSigner();
+    const authWalletA = await getWalletA();
 
     await litNodeClient.connect();
 
@@ -372,14 +440,13 @@ export async function sigA() {
         jsParams: {
             authSig: JSON.stringify(
                 await generateAuthSig({
-                    signer: ethersSignerA,
-                    // @ts-ignore
+                    signer: authWalletA,
                     toSign: await createSiweMessageWithRecaps({
                         uri: "http://localhost",
                         expiration: new Date(
                             Date.now() + 1000 * 60 * 60 * 24
                         ).toISOString(), // 24 hours
-                        walletAddress: await ethersSignerA.getAddress(),
+                        walletAddress: authWalletA.address,
                         nonce: await litNodeClient.getLatestBlockhash(),
                         litNodeClient,
                     }),
@@ -394,7 +461,7 @@ export async function sigA() {
 
 // takes second wallet and litActionB for a session
 export async function sigB() {
-    const anotherAuthWallet = await getAnotherWallet();
+    const authWalletB = await getWalletB();
 
     await litNodeClient.connect();
 
@@ -414,14 +481,13 @@ export async function sigB() {
         jsParams: {
             authSig: JSON.stringify(
                 await generateAuthSig({
-                    signer: anotherAuthWallet,
-                    // @ts-ignore
+                    signer: authWalletB,
                     toSign: await createSiweMessageWithRecaps({
                         uri: "http://localhost",
                         expiration: new Date(
                             Date.now() + 1000 * 60 * 60 * 24
                         ).toISOString(), // 24 hours
-                        walletAddress: anotherAuthWallet.address,
+                        walletAddress: authWalletB.address,
                         nonce: await litNodeClient.getLatestBlockhash(),
                         litNodeClient,
                     }),
@@ -435,53 +501,52 @@ export async function sigB() {
 }
 
 // takes current user wallet for a session
-export async function sigC() {
-    console.log("clicked");
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
-    const ethersSigner = provider.getSigner();
+// export async function sigC() {
+//     console.log("clicked");
+//     const provider = new ethers.providers.Web3Provider(window.ethereum);
+//     const ethersSigner = provider.getSigner();
 
-    await litNodeClient.connect();
+//     await litNodeClient.connect();
 
-    const sessionSigs = await litNodeClient.getSessionSigs({
-        chain: "ethereum",
-        resourceAbilityRequests: [
-            {
-                resource: new LitPKPResource("*"),
-                ability: LitAbility.PKPSigning,
-            },
-            {
-                resource: new LitActionResource("*"),
-                ability: LitAbility.LitActionExecution,
-            },
-        ],
-        authNeededCallback: async ({ resourceAbilityRequests }) => {
-            const toSign = await createSiweMessageWithRecaps({
-                uri: "http://localhost:3000",
-                expiration: new Date(
-                    Date.now() + 1000 * 60 * 60 * 24
-                ).toISOString(), // 24 hours,
-                resources: resourceAbilityRequests,
-                walletAddress: await ethersSigner.getAddress(),
-                nonce: await litNodeClient.getLatestBlockhash(),
-                litNodeClient,
-            });
+//     const sessionSigs = await litNodeClient.getSessionSigs({
+//         chain: "ethereum",
+//         resourceAbilityRequests: [
+//             {
+//                 resource: new LitPKPResource("*"),
+//                 ability: LitAbility.PKPSigning,
+//             },
+//             {
+//                 resource: new LitActionResource("*"),
+//                 ability: LitAbility.LitActionExecution,
+//             },
+//         ],
+//         authNeededCallback: async ({ resourceAbilityRequests }) => {
+//             const toSign = await createSiweMessageWithRecaps({
+//                 uri: "http://localhost:3000",
+//                 expiration: new Date(
+//                     Date.now() + 1000 * 60 * 60 * 24
+//                 ).toISOString(), // 24 hours,
+//                 resources: resourceAbilityRequests,
+//                 walletAddress: await ethersSigner.getAddress(),
+//                 nonce: await litNodeClient.getLatestBlockhash(),
+//                 litNodeClient,
+//             });
 
-            return await generateAuthSig({
-                signer: ethersSigner,
-                toSign,
-            });
-        },
-    });
+//             return await generateAuthSig({
+//                 signer: ethersSigner,
+//                 toSign,
+//             });
+//         },
+//     });
 
-    console.log("sessionSigs: ", sessionSigs);
-    return sessionSigs;
-}
+//     console.log("sessionSigs: ", sessionSigs);
+//     return sessionSigs;
+// }
 
 // helper functions --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 async function uploadLitActionToIPFS(litActionCode) {
     const ipfsHash = await ipfsHelpers.stringToCidV0(litActionCode);
-
     console.log("ipfsHash: ", ipfsHash);
 
     return ipfsHash;
@@ -495,29 +560,29 @@ async function stringToBytes(_string) {
     return LIT_ACTION_IPFS_CID_BYTES;
 }
 
-async function getAnotherWallet() {
-    const provider = new ethers.providers.JsonRpcProvider(
-        `https://yellowstone-rpc.litprotocol.com/`
-    );
-
-    const wallet = new Wallet(privateKey, provider);
-
-    return wallet;
-}
-
 export async function seeAuthMethods() {
-    console.log("started..");
+    console.log("checking auth methods..");
 
     const litContracts = new LitContracts({
         network: LitNetwork.DatilDev,
     });
-
     await litContracts.connect();
 
     const authMethods =
         await litContracts.pkpPermissionsContract.read.getPermittedAuthMethods(
             newlyMintedPKP.tokenId
         );
-
     console.log(authMethods);
+}
+
+function formatSignature(signature) {
+    const dataSigned = `0x${signature.dataSigned}`;
+
+    const encodedSig = ethers.utils.joinSignature({
+        v: signature.recid,
+        r: `0x${signature.r}`,
+        s: `0x${signature.s}`,
+    });
+
+    return encodedSig;
 }

@@ -30,7 +30,7 @@ export const litActionA = `(async () => {
       response: "true",
     });
   })();
-  `;
+`;
 
 export const litActionB = `(async () => {
     const accessControlConditions = [
